@@ -1,6 +1,6 @@
-# MinecraftAFK WebSocket Bot
+# MinecraftAFK.com WebSocket Bot 
 
-A Node.js WebSocket bot for monitoring MinecraftAFK accounts with Discord notifications and chat logging.
+A Node.js WebSocket bot for monitoring MinecraftAFK.com accounts with Discord notifications and chat logging.
 
 ## Features
 
