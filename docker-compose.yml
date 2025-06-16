@@ -9,9 +9,10 @@ services:
       - .env
     environment:
       - NODE_ENV=production
+      - LOGS_DIRECTORY=/app/chat_logs
     volumes:
-      - ./chat_logs:/usr/src/app/chat_logs
-      - ./logs:/usr/src/app/logs
+      # Mount host directory with proper permissions
+      - ./chat_logs:/app/chat_logs:rw
     networks:
       - minecraft-bot-network
     logging:
@@ -23,7 +24,3 @@ services:
 networks:
   minecraft-bot-network:
     driver: bridge
-
-volumes:
-  chat_logs:
-    driver: local
