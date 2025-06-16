@@ -16,27 +16,27 @@ class MinecraftAFKBot {
         this.lastDiscordPing = null;
         this.lastStatusSummary = null;
         
-        // Connection stability tracking
+        
         this.connectionStartTime = null;
         this.lastDisconnectTime = null;
         this.stableConnectionThreshold = parseInt(process.env.STABLE_CONNECTION_THRESHOLD) || 300000;
         this.disconnectCooldown = parseInt(process.env.DISCONNECT_COOLDOWN) || 120000;
         this.pendingReconnectTimeout = null;
         
-        // Configuration from environment variables
+        
         this.discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
         this.wsUrl = process.env.WEBSOCKET_URL || 'wss://minecraftafk.com/ws';
         this.cookies = `token=${process.env.MINECRAFTAFK_TOKEN}; checked=false`;
         this.debugMode = process.env.DEBUG_MODE === 'true';
         
-        // Notification intervals
+        
         this.discordPingInterval = parseInt(process.env.DISCORD_PING_INTERVAL) || 7200000;
         this.statusSummaryInterval = parseInt(process.env.STATUS_SUMMARY_INTERVAL) || 7200000;
         
-        // Validate required environment variables
+        
         this.validateEnvironment();
         
-        // Create logs directory
+        
         this.logsDir = process.env.LOGS_DIRECTORY || './chat_logs';
         if (!fs.existsSync(this.logsDir)) {
             fs.mkdirSync(this.logsDir, { recursive: true });
@@ -535,11 +535,11 @@ class MinecraftAFKBot {
     }
 }
 
-// Initialize and start the bot
+
 const bot = new MinecraftAFKBot();
 bot.connect();
 
-// Handle graceful shutdown
+
 process.on('SIGINT', async () => {
     console.log('\n🛑 Shutting down bot...');
     
