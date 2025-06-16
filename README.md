@@ -264,7 +264,6 @@ If you encounter issues:
 ## Changelog
 
 ### v1.0.0
-- Initial release
 - WebSocket monitoring for MinecraftAFK accounts
 - Discord webhook notifications
 - Automatic chat logging
