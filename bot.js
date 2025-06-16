@@ -8,7 +8,7 @@ class MinecraftAFKBot {
         this.ws = null;
         this.isConnected = false;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = parseInt(process.env.MAX_RECONNECT_ATTEMPTS) || 50; 
+        this.maxReconnectAttempts = parseInt(process.env.MAX_RECONNECT_ATTEMPTS) || 50;
         this.reconnectInterval = parseInt(process.env.RECONNECT_INTERVAL) || 1000;
         this.maxReconnectInterval = parseInt(process.env.MAX_RECONNECT_INTERVAL) || 30000;
         this.lastPingTime = null;
@@ -23,8 +23,13 @@ class MinecraftAFKBot {
         this.stableConnectionThreshold = parseInt(process.env.STABLE_CONNECTION_THRESHOLD) || 300000;
         this.disconnectCooldown = parseInt(process.env.DISCONNECT_COOLDOWN) || 120000;
         this.pendingReconnectTimeout = null;
-        this.forceReconnectTimeout = null; 
-        this.connectionTimeout = 10000; 
+        this.forceReconnectTimeout = null;
+        this.connectionTimeout = 10000;
+        
+        
+        this.hasNotifiedConnectionFailure = false;
+        this.lastConnectionNotification = null;
+        this.connectionNotificationCooldown = 300000; 
         
         
         this.stateChangeBuffer = new Map();
@@ -101,14 +106,13 @@ class MinecraftAFKBot {
         }
     }
 
-    
     startConnectionMonitoring() {
         setInterval(() => {
             if (!this.isConnected && !this.pendingReconnectTimeout) {
                 console.log('🔍 Connection monitor detected disconnected state without pending reconnection');
                 this.scheduleReconnect();
             }
-        }, 30000); 
+        }, 30000);
     }
 
     async sendDiscordNotification(title, description, color = 3447003) {
@@ -153,10 +157,22 @@ class MinecraftAFKBot {
         return connectionDuration >= this.stableConnectionThreshold;
     }
 
+    
     shouldNotifyDisconnection(code, reason) {
+        const now = Date.now();
+        
+        
+        if (this.lastConnectionNotification && 
+            (now - this.lastConnectionNotification) < this.connectionNotificationCooldown) {
+            return false;
+        }
+        
+        
         if (code === 1006) {
             return this.wasConnectionStable();
         }
+        
+        
         return true;
     }
 
@@ -169,7 +185,6 @@ class MinecraftAFKBot {
     connect() {
         try {
             console.log('🔄 Attempting to connect to MinecraftAFK WebSocket...');
-            
             
             if (this.forceReconnectTimeout) {
                 clearTimeout(this.forceReconnectTimeout);
@@ -191,7 +206,6 @@ class MinecraftAFKBot {
                 handshakeTimeout: this.connectionTimeout
             });
 
-            
             this.forceReconnectTimeout = setTimeout(() => {
                 if (!this.isConnected) {
                     console.log('⏰ Connection timeout reached, forcing reconnection');
@@ -219,17 +233,26 @@ class MinecraftAFKBot {
             this.connectionStartTime = Date.now();
             
             
+            this.hasNotifiedConnectionFailure = false;
+            
             if (this.forceReconnectTimeout) {
                 clearTimeout(this.forceReconnectTimeout);
                 this.forceReconnectTimeout = null;
             }
             
+            
             if (this.shouldNotifyReconnection()) {
-                await this.sendDiscordNotification(
-                    "🟢 WebSocket Connected",
-                    "Successfully connected to MinecraftAFK WebSocket",
-                    3066993
-                );
+                const now = Date.now();
+                if (!this.lastConnectionNotification || 
+                    (now - this.lastConnectionNotification) > this.connectionNotificationCooldown) {
+                    
+                    await this.sendDiscordNotification(
+                        "🟢 WebSocket Connected",
+                        "Successfully connected to MinecraftAFK WebSocket",
+                        3066993
+                    );
+                    this.lastConnectionNotification = now;
+                }
             }
         });
 
@@ -252,19 +275,22 @@ class MinecraftAFKBot {
             this.isConnected = false;
             this.lastDisconnectTime = Date.now();
             
-            
             if (this.forceReconnectTimeout) {
                 clearTimeout(this.forceReconnectTimeout);
                 this.forceReconnectTimeout = null;
             }
             
-            if (this.shouldNotifyDisconnection(code, reasonText)) {
-                let notificationTitle = "🔴 WebSocket Disconnected";
-                let notificationDescription = `Connection closed with code: ${code}`;
+            
+            
+            const willAttemptReconnection = this.reconnectAttempts < this.maxReconnectAttempts;
+            
+            if (!willAttemptReconnection && this.shouldNotifyDisconnection(code, reasonText)) {
+                let notificationTitle = "🔴 WebSocket Connection Failed";
+                let notificationDescription = `Connection permanently lost after ${this.reconnectAttempts} reconnection attempts.\nLast error code: ${code}`;
                 
                 if (code === 1006) {
-                    notificationTitle = "⚠️ WebSocket Connection Lost";
-                    notificationDescription = `Connection lost after ${Math.round((Date.now() - this.connectionStartTime) / 60000)} minutes (Error 1006)`;
+                    notificationTitle = "⚠️ WebSocket Connection Permanently Lost";
+                    notificationDescription = `Connection lost permanently after ${Math.round((Date.now() - this.connectionStartTime) / 60000)} minutes.\nFailed after ${this.reconnectAttempts} reconnection attempts (Error 1006)`;
                 } else if (reasonText !== 'Unknown') {
                     notificationDescription += `\nReason: ${reasonText}`;
                 }
@@ -274,6 +300,7 @@ class MinecraftAFKBot {
                     notificationDescription,
                     15158332
                 );
+                this.lastConnectionNotification = Date.now();
             }
             
             
@@ -284,21 +311,20 @@ class MinecraftAFKBot {
         this.ws.on('error', async (error) => {
             console.error('⚠️ WebSocket error:', error);
             
-            
             this.isConnected = false;
-            
             
             if (this.forceReconnectTimeout) {
                 clearTimeout(this.forceReconnectTimeout);
                 this.forceReconnectTimeout = null;
             }
             
-            if (!error.message.includes('ECONNREFUSED') && !error.message.includes('ENOTFOUND')) {
-                await this.sendDiscordNotification(
-                    "⚠️ WebSocket Error",
-                    `Error occurred: ${error.message}`,
-                    16776960
-                );
+            
+            
+            if (!error.message.includes('ECONNREFUSED') && 
+                !error.message.includes('ENOTFOUND') && 
+                !error.message.includes('ECONNRESET') &&
+                this.debugMode) {
+                console.log('Non-connection error occurred, will monitor for reconnection success');
             }
             
             
@@ -385,7 +411,6 @@ class MinecraftAFKBot {
 
     
     async scheduleReconnect() {
-        
         if (this.pendingReconnectTimeout) {
             clearTimeout(this.pendingReconnectTimeout);
             this.pendingReconnectTimeout = null;
@@ -395,11 +420,16 @@ class MinecraftAFKBot {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.error('❌ Max reconnection attempts reached. Stopping reconnection.');
             
-            await this.sendDiscordNotification(
-                "🚨 Connection Failed",
-                `Maximum reconnection attempts (${this.maxReconnectAttempts}) reached. Bot has stopped trying to reconnect.`,
-                15158332
-            );
+            
+            if (!this.hasNotifiedConnectionFailure) {
+                await this.sendDiscordNotification(
+                    "🚨 Connection Failed Permanently",
+                    `Maximum reconnection attempts (${this.maxReconnectAttempts}) reached. Bot has stopped trying to reconnect.\n\nManual intervention may be required.`,
+                    15158332
+                );
+                this.hasNotifiedConnectionFailure = true;
+                this.lastConnectionNotification = Date.now();
+            }
             return;
         }
 
@@ -411,12 +441,10 @@ class MinecraftAFKBot {
             this.connect();
         }, this.reconnectInterval);
 
-        
-        const jitter = Math.random() * 1000; 
+        const jitter = Math.random() * 1000;
         this.reconnectInterval = Math.min(this.reconnectInterval * 1.5 + jitter, this.maxReconnectInterval);
     }
 
-    
     async handleAccountConnectionRequest(connectionData) {
         const account = connectionData.account;
         console.log(`  Initiating connection for account: ${account}`);
@@ -673,7 +701,6 @@ class MinecraftAFKBot {
     }
 
     cleanup() {
-        
         if (this.pendingReconnectTimeout) {
             clearTimeout(this.pendingReconnectTimeout);
             this.pendingReconnectTimeout = null;
@@ -683,7 +710,6 @@ class MinecraftAFKBot {
             clearTimeout(this.forceReconnectTimeout);
             this.forceReconnectTimeout = null;
         }
-        
         
         for (const [account, data] of this.stateChangeBuffer.entries()) {
             if (data.timeoutId) {
