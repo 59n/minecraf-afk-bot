@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  minecraft-afk-bot:
+    build: .
+    container_name: minecraft-afk-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./chat_logs:/usr/src/app/chat_logs
+      - ./logs:/usr/src/app/logs
+    networks:
+      - minecraft-bot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  minecraft-bot-network:
+    driver: bridge
+
+volumes:
+  chat_logs:
+    driver: local

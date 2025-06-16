@@ -1,0 +1,43 @@
+{
+  "name": "minecraft-afk-bot",
+  "version": "1.0.0",
+  "description": "A WebSocket bot for monitoring MinecraftAFK accounts with Discord notifications",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js",
+    "docker:build": "docker build -t minecraft-afk-bot .",
+    "docker:run": "docker run --env-file .env minecraft-afk-bot",
+    "docker:compose": "docker-compose up -d",
+    "docker:logs": "docker-compose logs -f",
+    "docker:stop": "docker-compose down"
+  },
+  "keywords": [
+    "minecraft",
+    "websocket",
+    "discord",
+    "bot",
+    "monitoring",
+    "afk"
+  ],
+  "author": "59n",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.14.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/59n/minecraf-afk-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/59n/minecraf-afk-bot/issues"
+  },
+  "homepage": "https://github.com/59n/minecraf-afk-bot#readme"
+}
