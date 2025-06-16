@@ -23,7 +23,7 @@ A Node.js WebSocket bot for monitoring MinecraftAFK accounts with Discord notifi
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/minecraft-afk-bot.git
+git clone https://github.com/59n/minecraft-afk-bot.git
 cd minecraft-afk-bot
 ```
 
@@ -47,7 +47,7 @@ npm start
 
 1. Clone and configure:
 ```bash
-git clone https://github.com/yourusername/minecraft-afk-bot.git
+git clone https://github.com/59n/minecraft-afk-bot.git
 cd minecraft-afk-bot
 cp .env.example .env
 # Edit .env with your configuration
@@ -165,17 +165,17 @@ minecraft-afk-bot/
 ## Chat Logging
 
 Chat messages are automatically saved to individual JSON files in the `chat_logs/` directory:
-- `kitzoo_chat.json`
-- `campsita_chat.json`
-- `pobity_chat.json`
-- `amassei_chat.json`
-- `ivi_chat.json`
+- `username_chat.json`
+- `username_chat.json`
+- `username_chat.json`
+- `username_chat.json`
+- `username_chat.json`
 
 Each log entry contains:
 ```json
 {
     "timestamp": "2025-06-16T14:08:00.000Z",
-    "account": "kitzoo",
+    "account": "username",
     "message": "extracted chat text",
     "raw_data": { /* original minecraft chat data */ }
 }
