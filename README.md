@@ -247,10 +247,6 @@ npm run docker:build
 - Use environment variables for all sensitive configuration
 - The Docker container runs as a non-root user for security
 
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
 ## Support
 
 If you encounter issues:
