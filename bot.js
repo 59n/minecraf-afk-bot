@@ -17,46 +17,46 @@ class MinecraftAFKBot {
         this.lastStatusSummary = null;
         this.lastProfileNotification = null;
         
-        // Connection stability tracking
+        
         this.connectionStartTime = null;
         this.lastDisconnectTime = null;
         this.stableConnectionThreshold = parseInt(process.env.STABLE_CONNECTION_THRESHOLD) || 300000;
         this.disconnectCooldown = parseInt(process.env.DISCONNECT_COOLDOWN) || 120000;
         this.pendingReconnectTimeout = null;
         
-        // State change debouncing to prevent spam
-        this.stateChangeBuffer = new Map(); // Account -> {state, timestamp, timeoutId}
-        this.stateChangeDelay = 5000; // 5 seconds delay before sending notification
-        this.lastStateNotification = new Map(); // Account -> timestamp of last notification
-        this.minNotificationInterval = 30000; // Minimum 30 seconds between notifications per account
         
-        // Configuration from environment variables
+        this.stateChangeBuffer = new Map(); 
+        this.stateChangeDelay = 5000; 
+        this.lastStateNotification = new Map(); 
+        this.minNotificationInterval = 30000; 
+        
+        
         this.discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
         this.wsUrl = process.env.WEBSOCKET_URL || 'wss://minecraftafk.com/ws';
         this.cookies = `token=${process.env.MINECRAFTAFK_TOKEN}; checked=false`;
         this.debugMode = process.env.DEBUG_MODE === 'true';
         
-        // Notification intervals
+        
         this.discordPingInterval = parseInt(process.env.DISCORD_PING_INTERVAL) || 7200000;
         this.statusSummaryInterval = parseInt(process.env.STATUS_SUMMARY_INTERVAL) || 7200000;
         
-        // Validate required environment variables
+        
         this.validateEnvironment();
         
-        // Create logs directory
+        
         try {
             this.logsDir = process.env.LOGS_DIRECTORY || '/app/chat_logs';
             
-            // Check if directory exists
+            
             if (!fs.existsSync(this.logsDir)) {
-                // Try to create directory
+                
                 fs.mkdirSync(this.logsDir, { recursive: true, mode: 0o755 });
                 console.log(`✅ Created logs directory: ${this.logsDir}`);
             } else {
                 console.log(`✅ Logs directory exists: ${this.logsDir}`);
             }
             
-            // Test write permissions
+            
             const testFile = path.join(this.logsDir, '.write-test');
             fs.writeFileSync(testFile, 'test');
             fs.unlinkSync(testFile);
@@ -66,7 +66,7 @@ class MinecraftAFKBot {
             if (error.code === 'EACCES') {
                 console.warn('⚠️ Cannot create chat_logs directory due to permissions.');
                 console.warn('⚠️ Chat logging will be disabled. Bot will continue without file logging.');
-                this.logsDir = null; // Disable chat logging
+                this.logsDir = null; 
             } else {
                 console.error('❌ Unexpected error creating logs directory:', error);
                 throw error;
@@ -358,7 +358,7 @@ class MinecraftAFKBot {
         
         console.log(`  Account: ${account}, New State: ${stateDescription} (${newState})`);
         
-        // Clear any existing timeout for this account
+        
         if (this.stateChangeBuffer.has(account)) {
             const existingData = this.stateChangeBuffer.get(account);
             if (existingData.timeoutId) {
@@ -366,7 +366,7 @@ class MinecraftAFKBot {
             }
         }
         
-        // Check if we should notify based on minimum interval
+        
         const lastNotification = this.lastStateNotification.get(account);
         const now = Date.now();
         
@@ -375,20 +375,20 @@ class MinecraftAFKBot {
             return;
         }
         
-        // Buffer the state change with a delay
+        
         const timeoutId = setTimeout(async () => {
-            // Check if the state is still the same after the delay
+            
             const bufferedData = this.stateChangeBuffer.get(account);
             if (bufferedData && bufferedData.state === newState) {
                 await this.sendStateChangeNotification(account, newState, stateDescription);
                 this.lastStateNotification.set(account, Date.now());
             }
             
-            // Clean up the buffer
+            
             this.stateChangeBuffer.delete(account);
         }, this.stateChangeDelay);
         
-        // Store the buffered state change
+        
         this.stateChangeBuffer.set(account, {
             state: newState,
             timestamp: now,
@@ -397,17 +397,17 @@ class MinecraftAFKBot {
     }
 
     async sendStateChangeNotification(account, state, stateDescription) {
-        // Only notify for significant state changes
-        const significantStates = [0, 2]; // Offline and Connected only
+        
+        const significantStates = [0, 2]; 
         
         if (!significantStates.includes(state)) {
             console.log(`  Skipping notification for ${account} - non-significant state: ${stateDescription}`);
             return;
         }
         
-        let color = 3447003; // Blue default
-        if (state === 2) color = 3066993; // Green for connected
-        if (state === 0) color = 15158332; // Red for offline
+        let color = 3447003; 
+        if (state === 2) color = 3066993; 
+        if (state === 0) color = 15158332; 
         
         await this.sendDiscordNotification(
             "🔄 Account State Change",
@@ -446,7 +446,7 @@ class MinecraftAFKBot {
             currentStates.set(account.username, stateDescription);
             console.log(`  ${index + 1}. ${account.username} - State: ${stateDescription}`);
             
-            // Only track significant changes (Online <-> Offline)
+            
             if (previousState && previousState !== stateDescription) {
                 significantChanges.push({
                     username: account.username,
@@ -456,12 +456,12 @@ class MinecraftAFKBot {
             }
         });
         
-        // Only send notification for significant changes and respect rate limiting
+        
         if (significantChanges.length > 0) {
             const now = Date.now();
             const lastProfileNotification = this.lastProfileNotification || 0;
             
-            // Rate limit profile change notifications to once per minute
+            
             if ((now - lastProfileNotification) > 60000) {
                 let changeDescription = significantChanges.map(change => 
                     `**${change.username}**: ${change.previousState} → ${change.currentState}`
@@ -479,7 +479,7 @@ class MinecraftAFKBot {
         
         this.lastAccountStates = currentStates;
         
-        // Keep existing status summary logic but increase interval
+        
         if (!this.lastStatusSummary || (Date.now() - this.lastStatusSummary) > this.statusSummaryInterval) {
             let summaryDescription = Array.from(currentStates.entries())
                 .map(([username, state]) => `**${username}**: ${state}`)
@@ -554,7 +554,7 @@ class MinecraftAFKBot {
     }
 
     saveChatToFile(account, logEntry) {
-        // Skip if logging is disabled due to permission issues
+        
         if (!this.logsDir) {
             return;
         }
@@ -577,7 +577,7 @@ class MinecraftAFKBot {
             
         } catch (error) {
             console.error(`❌ Failed to save chat for ${account}:`, error);
-            // Disable logging if we encounter permission errors
+            
             if (error.code === 'EACCES') {
                 console.warn('⚠️ Disabling chat logging due to permission errors');
                 this.logsDir = null;
@@ -612,7 +612,7 @@ class MinecraftAFKBot {
     }
 
     cleanup() {
-        // Clear all pending timeouts
+        
         for (const [account, data] of this.stateChangeBuffer.entries()) {
             if (data.timeoutId) {
                 clearTimeout(data.timeoutId);
@@ -645,11 +645,11 @@ class MinecraftAFKBot {
     }
 }
 
-// Initialize and start the bot
+
 const bot = new MinecraftAFKBot();
 bot.connect();
 
-// Handle graceful shutdown
+
 process.on('SIGINT', async () => {
     console.log('\n🛑 Shutting down bot...');
     
