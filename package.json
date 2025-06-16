@@ -1,7 +1,7 @@
 {
   "name": "minecraft-afk-bot",
   "version": "1.0.0",
-  "description": "A WebSocket bot for monitoring MinecraftAFK accounts with Discord notifications",
+  "description": "A WebSocket bot for monitoring MinecraftAFK.com accounts with Discord notifications",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
@@ -34,10 +34,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/59n/minecraf-afk-bot.git"
+    "url": "https://github.com/59n/minecraft-afk-bot.git"
   },
   "bugs": {
-    "url": "https://github.com/59n/minecraf-afk-bot/issues"
+    "url": "https://github.com/59n/minecraft-afk-bot/issues"
   },
-  "homepage": "https://github.com/59n/minecraf-afk-bot#readme"
+  "homepage": "https://github.com/59n/minecraft-afk-bot#readme"
 }
