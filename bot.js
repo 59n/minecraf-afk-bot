@@ -8,7 +8,7 @@ class MinecraftAFKBot {
         this.ws = null;
         this.isConnected = false;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = parseInt(process.env.MAX_RECONNECT_ATTEMPTS) || 10;
+        this.maxReconnectAttempts = parseInt(process.env.MAX_RECONNECT_ATTEMPTS) || 50; 
         this.reconnectInterval = parseInt(process.env.RECONNECT_INTERVAL) || 1000;
         this.maxReconnectInterval = parseInt(process.env.MAX_RECONNECT_INTERVAL) || 30000;
         this.lastPingTime = null;
@@ -23,12 +23,14 @@ class MinecraftAFKBot {
         this.stableConnectionThreshold = parseInt(process.env.STABLE_CONNECTION_THRESHOLD) || 300000;
         this.disconnectCooldown = parseInt(process.env.DISCONNECT_COOLDOWN) || 120000;
         this.pendingReconnectTimeout = null;
+        this.forceReconnectTimeout = null; 
+        this.connectionTimeout = 10000; 
         
         
-        this.stateChangeBuffer = new Map(); 
-        this.stateChangeDelay = 5000; 
-        this.lastStateNotification = new Map(); 
-        this.minNotificationInterval = 30000; 
+        this.stateChangeBuffer = new Map();
+        this.stateChangeDelay = 5000;
+        this.lastStateNotification = new Map();
+        this.minNotificationInterval = 30000;
         
         
         this.discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
@@ -44,34 +46,10 @@ class MinecraftAFKBot {
         this.validateEnvironment();
         
         
-        try {
-            this.logsDir = process.env.LOGS_DIRECTORY || '/app/chat_logs';
-            
-            
-            if (!fs.existsSync(this.logsDir)) {
-                
-                fs.mkdirSync(this.logsDir, { recursive: true, mode: 0o755 });
-                console.log(`✅ Created logs directory: ${this.logsDir}`);
-            } else {
-                console.log(`✅ Logs directory exists: ${this.logsDir}`);
-            }
-            
-            
-            const testFile = path.join(this.logsDir, '.write-test');
-            fs.writeFileSync(testFile, 'test');
-            fs.unlinkSync(testFile);
-            console.log(`✅ Write permissions verified for: ${this.logsDir}`);
-            
-        } catch (error) {
-            if (error.code === 'EACCES') {
-                console.warn('⚠️ Cannot create chat_logs directory due to permissions.');
-                console.warn('⚠️ Chat logging will be disabled. Bot will continue without file logging.');
-                this.logsDir = null; 
-            } else {
-                console.error('❌ Unexpected error creating logs directory:', error);
-                throw error;
-            }
-        }
+        this.initializeLogsDirectory();
+        
+        
+        this.startConnectionMonitoring();
     }
 
     validateEnvironment() {
@@ -93,6 +71,44 @@ class MinecraftAFKBot {
         if (this.debugMode) {
             console.log('✅ Environment variables validated successfully');
         }
+    }
+
+    initializeLogsDirectory() {
+        try {
+            this.logsDir = process.env.LOGS_DIRECTORY || '/app/chat_logs';
+            
+            if (!fs.existsSync(this.logsDir)) {
+                fs.mkdirSync(this.logsDir, { recursive: true, mode: 0o755 });
+                console.log(`✅ Created logs directory: ${this.logsDir}`);
+            } else {
+                console.log(`✅ Logs directory exists: ${this.logsDir}`);
+            }
+            
+            const testFile = path.join(this.logsDir, '.write-test');
+            fs.writeFileSync(testFile, 'test');
+            fs.unlinkSync(testFile);
+            console.log(`✅ Write permissions verified for: ${this.logsDir}`);
+            
+        } catch (error) {
+            if (error.code === 'EACCES') {
+                console.warn('⚠️ Cannot create chat_logs directory due to permissions.');
+                console.warn('⚠️ Chat logging will be disabled. Bot will continue without file logging.');
+                this.logsDir = null;
+            } else {
+                console.error('❌ Unexpected error creating logs directory:', error);
+                throw error;
+            }
+        }
+    }
+
+    
+    startConnectionMonitoring() {
+        setInterval(() => {
+            if (!this.isConnected && !this.pendingReconnectTimeout) {
+                console.log('🔍 Connection monitor detected disconnected state without pending reconnection');
+                this.scheduleReconnect();
+            }
+        }, 30000); 
     }
 
     async sendDiscordNotification(title, description, color = 3447003) {
@@ -154,6 +170,12 @@ class MinecraftAFKBot {
         try {
             console.log('🔄 Attempting to connect to MinecraftAFK WebSocket...');
             
+            
+            if (this.forceReconnectTimeout) {
+                clearTimeout(this.forceReconnectTimeout);
+                this.forceReconnectTimeout = null;
+            }
+            
             this.ws = new WebSocket(this.wsUrl, {
                 headers: {
                     'Host': 'minecraftafk.com',
@@ -165,8 +187,20 @@ class MinecraftAFKBot {
                     'Pragma': 'no-cache',
                     'Cache-Control': 'no-cache',
                     'Cookie': this.cookies
-                }
+                },
+                handshakeTimeout: this.connectionTimeout
             });
+
+            
+            this.forceReconnectTimeout = setTimeout(() => {
+                if (!this.isConnected) {
+                    console.log('⏰ Connection timeout reached, forcing reconnection');
+                    if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+                        this.ws.terminate();
+                    }
+                    this.scheduleReconnect();
+                }
+            }, this.connectionTimeout);
 
             this.setupEventHandlers();
             
@@ -183,6 +217,12 @@ class MinecraftAFKBot {
             this.reconnectAttempts = 0;
             this.reconnectInterval = parseInt(process.env.RECONNECT_INTERVAL) || 1000;
             this.connectionStartTime = Date.now();
+            
+            
+            if (this.forceReconnectTimeout) {
+                clearTimeout(this.forceReconnectTimeout);
+                this.forceReconnectTimeout = null;
+            }
             
             if (this.shouldNotifyReconnection()) {
                 await this.sendDiscordNotification(
@@ -204,12 +244,19 @@ class MinecraftAFKBot {
             this.ws.pong(data);
         });
 
+        
         this.ws.on('close', async (code, reason) => {
             const reasonText = reason ? reason.toString() : 'Unknown';
             console.log(`❌ WebSocket closed: ${code} - ${reasonText}`);
             
             this.isConnected = false;
             this.lastDisconnectTime = Date.now();
+            
+            
+            if (this.forceReconnectTimeout) {
+                clearTimeout(this.forceReconnectTimeout);
+                this.forceReconnectTimeout = null;
+            }
             
             if (this.shouldNotifyDisconnection(code, reasonText)) {
                 let notificationTitle = "🔴 WebSocket Disconnected";
@@ -229,11 +276,22 @@ class MinecraftAFKBot {
                 );
             }
             
+            
             this.scheduleReconnect();
         });
 
+        
         this.ws.on('error', async (error) => {
             console.error('⚠️ WebSocket error:', error);
+            
+            
+            this.isConnected = false;
+            
+            
+            if (this.forceReconnectTimeout) {
+                clearTimeout(this.forceReconnectTimeout);
+                this.forceReconnectTimeout = null;
+            }
             
             if (!error.message.includes('ECONNREFUSED') && !error.message.includes('ENOTFOUND')) {
                 await this.sendDiscordNotification(
@@ -242,6 +300,14 @@ class MinecraftAFKBot {
                     16776960
                 );
             }
+            
+            
+            setTimeout(() => {
+                if (!this.isConnected) {
+                    console.log('🔄 Forcing reconnection after error');
+                    this.scheduleReconnect();
+                }
+            }, 1000);
         });
     }
 
@@ -317,6 +383,40 @@ class MinecraftAFKBot {
         }
     }
 
+    
+    async scheduleReconnect() {
+        
+        if (this.pendingReconnectTimeout) {
+            clearTimeout(this.pendingReconnectTimeout);
+            this.pendingReconnectTimeout = null;
+        }
+
+        
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.error('❌ Max reconnection attempts reached. Stopping reconnection.');
+            
+            await this.sendDiscordNotification(
+                "🚨 Connection Failed",
+                `Maximum reconnection attempts (${this.maxReconnectAttempts}) reached. Bot has stopped trying to reconnect.`,
+                15158332
+            );
+            return;
+        }
+
+        this.reconnectAttempts++;
+        console.log(`🔄 Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${this.reconnectInterval / 1000} seconds...`);
+
+        this.pendingReconnectTimeout = setTimeout(() => {
+            this.pendingReconnectTimeout = null;
+            this.connect();
+        }, this.reconnectInterval);
+
+        
+        const jitter = Math.random() * 1000; 
+        this.reconnectInterval = Math.min(this.reconnectInterval * 1.5 + jitter, this.maxReconnectInterval);
+    }
+
+    
     async handleAccountConnectionRequest(connectionData) {
         const account = connectionData.account;
         console.log(`  Initiating connection for account: ${account}`);
@@ -358,14 +458,12 @@ class MinecraftAFKBot {
         
         console.log(`  Account: ${account}, New State: ${stateDescription} (${newState})`);
         
-        
         if (this.stateChangeBuffer.has(account)) {
             const existingData = this.stateChangeBuffer.get(account);
             if (existingData.timeoutId) {
                 clearTimeout(existingData.timeoutId);
             }
         }
-        
         
         const lastNotification = this.lastStateNotification.get(account);
         const now = Date.now();
@@ -375,19 +473,15 @@ class MinecraftAFKBot {
             return;
         }
         
-        
         const timeoutId = setTimeout(async () => {
-            
             const bufferedData = this.stateChangeBuffer.get(account);
             if (bufferedData && bufferedData.state === newState) {
                 await this.sendStateChangeNotification(account, newState, stateDescription);
                 this.lastStateNotification.set(account, Date.now());
             }
             
-            
             this.stateChangeBuffer.delete(account);
         }, this.stateChangeDelay);
-        
         
         this.stateChangeBuffer.set(account, {
             state: newState,
@@ -397,17 +491,16 @@ class MinecraftAFKBot {
     }
 
     async sendStateChangeNotification(account, state, stateDescription) {
-        
-        const significantStates = [0, 2]; 
+        const significantStates = [0, 2];
         
         if (!significantStates.includes(state)) {
             console.log(`  Skipping notification for ${account} - non-significant state: ${stateDescription}`);
             return;
         }
         
-        let color = 3447003; 
-        if (state === 2) color = 3066993; 
-        if (state === 0) color = 15158332; 
+        let color = 3447003;
+        if (state === 2) color = 3066993;
+        if (state === 0) color = 15158332;
         
         await this.sendDiscordNotification(
             "🔄 Account State Change",
@@ -446,7 +539,6 @@ class MinecraftAFKBot {
             currentStates.set(account.username, stateDescription);
             console.log(`  ${index + 1}. ${account.username} - State: ${stateDescription}`);
             
-            
             if (previousState && previousState !== stateDescription) {
                 significantChanges.push({
                     username: account.username,
@@ -456,11 +548,9 @@ class MinecraftAFKBot {
             }
         });
         
-        
         if (significantChanges.length > 0) {
             const now = Date.now();
             const lastProfileNotification = this.lastProfileNotification || 0;
-            
             
             if ((now - lastProfileNotification) > 60000) {
                 let changeDescription = significantChanges.map(change => 
@@ -478,7 +568,6 @@ class MinecraftAFKBot {
         }
         
         this.lastAccountStates = currentStates;
-        
         
         if (!this.lastStatusSummary || (Date.now() - this.lastStatusSummary) > this.statusSummaryInterval) {
             let summaryDescription = Array.from(currentStates.entries())
@@ -554,7 +643,6 @@ class MinecraftAFKBot {
     }
 
     saveChatToFile(account, logEntry) {
-        
         if (!this.logsDir) {
             return;
         }
@@ -577,7 +665,6 @@ class MinecraftAFKBot {
             
         } catch (error) {
             console.error(`❌ Failed to save chat for ${account}:`, error);
-            
             if (error.code === 'EACCES') {
                 console.warn('⚠️ Disabling chat logging due to permission errors');
                 this.logsDir = null;
@@ -585,33 +672,18 @@ class MinecraftAFKBot {
         }
     }
 
-    async scheduleReconnect() {
+    cleanup() {
+        
         if (this.pendingReconnectTimeout) {
             clearTimeout(this.pendingReconnectTimeout);
+            this.pendingReconnectTimeout = null;
         }
-
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error('❌ Max reconnection attempts reached. Stopping reconnection.');
-            
-            await this.sendDiscordNotification(
-                "🚨 Connection Failed",
-                "Maximum reconnection attempts reached. Bot has stopped trying to reconnect.",
-                15158332
-            );
-            return;
+        
+        if (this.forceReconnectTimeout) {
+            clearTimeout(this.forceReconnectTimeout);
+            this.forceReconnectTimeout = null;
         }
-
-        this.reconnectAttempts++;
-        console.log(`🔄 Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${this.reconnectInterval / 1000} seconds...`);
-
-        this.pendingReconnectTimeout = setTimeout(() => {
-            this.connect();
-        }, this.reconnectInterval);
-
-        this.reconnectInterval = Math.min(this.reconnectInterval * 2, this.maxReconnectInterval);
-    }
-
-    cleanup() {
+        
         
         for (const [account, data] of this.stateChangeBuffer.entries()) {
             if (data.timeoutId) {
@@ -622,10 +694,6 @@ class MinecraftAFKBot {
     }
 
     disconnect() {
-        if (this.pendingReconnectTimeout) {
-            clearTimeout(this.pendingReconnectTimeout);
-        }
-        
         this.cleanup();
         
         if (this.ws) {
