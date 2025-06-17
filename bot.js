@@ -29,13 +29,15 @@ class MinecraftAFKBot {
         
         this.hasNotifiedConnectionFailure = false;
         this.lastConnectionNotification = null;
-        this.connectionNotificationCooldown = 300000; 
+        this.connectionNotificationCooldown = 300000;
         
         
+        this.accountDetailedStates = new Map(); 
+        this.accountSimplifiedStates = new Map(); 
         this.stateChangeBuffer = new Map();
-        this.stateChangeDelay = 5000;
+        this.stateChangeDelay = 10000; 
         this.lastStateNotification = new Map();
-        this.minNotificationInterval = 30000;
+        this.minNotificationInterval = 60000; 
         
         
         this.discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
@@ -157,21 +159,17 @@ class MinecraftAFKBot {
         return connectionDuration >= this.stableConnectionThreshold;
     }
 
-    
     shouldNotifyDisconnection(code, reason) {
         const now = Date.now();
-        
         
         if (this.lastConnectionNotification && 
             (now - this.lastConnectionNotification) < this.connectionNotificationCooldown) {
             return false;
         }
         
-        
         if (code === 1006) {
             return this.wasConnectionStable();
         }
-        
         
         return true;
     }
@@ -232,14 +230,12 @@ class MinecraftAFKBot {
             this.reconnectInterval = parseInt(process.env.RECONNECT_INTERVAL) || 1000;
             this.connectionStartTime = Date.now();
             
-            
             this.hasNotifiedConnectionFailure = false;
             
             if (this.forceReconnectTimeout) {
                 clearTimeout(this.forceReconnectTimeout);
                 this.forceReconnectTimeout = null;
             }
-            
             
             if (this.shouldNotifyReconnection()) {
                 const now = Date.now();
@@ -267,7 +263,6 @@ class MinecraftAFKBot {
             this.ws.pong(data);
         });
 
-        
         this.ws.on('close', async (code, reason) => {
             const reasonText = reason ? reason.toString() : 'Unknown';
             console.log(`❌ WebSocket closed: ${code} - ${reasonText}`);
@@ -279,8 +274,6 @@ class MinecraftAFKBot {
                 clearTimeout(this.forceReconnectTimeout);
                 this.forceReconnectTimeout = null;
             }
-            
-            
             
             const willAttemptReconnection = this.reconnectAttempts < this.maxReconnectAttempts;
             
@@ -303,11 +296,9 @@ class MinecraftAFKBot {
                 this.lastConnectionNotification = Date.now();
             }
             
-            
             this.scheduleReconnect();
         });
 
-        
         this.ws.on('error', async (error) => {
             console.error('⚠️ WebSocket error:', error);
             
@@ -318,15 +309,12 @@ class MinecraftAFKBot {
                 this.forceReconnectTimeout = null;
             }
             
-            
-            
             if (!error.message.includes('ECONNREFUSED') && 
                 !error.message.includes('ENOTFOUND') && 
                 !error.message.includes('ECONNRESET') &&
                 this.debugMode) {
                 console.log('Non-connection error occurred, will monitor for reconnection success');
             }
-            
             
             setTimeout(() => {
                 if (!this.isConnected) {
@@ -409,17 +397,14 @@ class MinecraftAFKBot {
         }
     }
 
-    
     async scheduleReconnect() {
         if (this.pendingReconnectTimeout) {
             clearTimeout(this.pendingReconnectTimeout);
             this.pendingReconnectTimeout = null;
         }
 
-        
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.error('❌ Max reconnection attempts reached. Stopping reconnection.');
-            
             
             if (!this.hasNotifiedConnectionFailure) {
                 await this.sendDiscordNotification(
@@ -479,12 +464,39 @@ class MinecraftAFKBot {
         );
     }
 
+    
     async handleAccountStateChange(stateData) {
         const account = stateData.account;
-        const newState = stateData.state;
-        const stateDescription = this.getDetailedState(newState);
+        const newDetailedState = stateData.state;
+        const newSimplifiedState = this.getSimplifiedState(newDetailedState);
+        const stateDescription = this.getDetailedState(newDetailedState);
         
-        console.log(`  Account: ${account}, New State: ${stateDescription} (${newState})`);
+        console.log(`  Account: ${account}, New State: ${stateDescription} (${newDetailedState})`);
+        
+        
+        const previousDetailedState = this.accountDetailedStates.get(account);
+        const previousSimplifiedState = this.accountSimplifiedStates.get(account);
+        
+        
+        this.accountDetailedStates.set(account, newDetailedState);
+        this.accountSimplifiedStates.set(account, newSimplifiedState);
+        
+        
+        if (previousSimplifiedState === undefined) {
+            console.log(`  First state received for ${account}: ${newSimplifiedState}`);
+            return;
+        }
+        
+        
+        const isSignificantTransition = previousSimplifiedState !== newSimplifiedState;
+        
+        if (!isSignificantTransition) {
+            console.log(`  Skipping notification for ${account} - no significant state transition (${previousSimplifiedState} → ${newSimplifiedState})`);
+            return;
+        }
+        
+        console.log(`  Significant transition detected for ${account}: ${previousSimplifiedState} → ${newSimplifiedState}`);
+        
         
         if (this.stateChangeBuffer.has(account)) {
             const existingData = this.stateChangeBuffer.get(account);
@@ -493,46 +505,59 @@ class MinecraftAFKBot {
             }
         }
         
+        
         const lastNotification = this.lastStateNotification.get(account);
         const now = Date.now();
         
         if (lastNotification && (now - lastNotification) < this.minNotificationInterval) {
-            console.log(`  Skipping notification for ${account} - too soon since last notification`);
+            console.log(`  Skipping notification for ${account} - rate limited (last notification ${Math.round((now - lastNotification) / 1000)}s ago)`);
             return;
         }
         
+        
         const timeoutId = setTimeout(async () => {
-            const bufferedData = this.stateChangeBuffer.get(account);
-            if (bufferedData && bufferedData.state === newState) {
-                await this.sendStateChangeNotification(account, newState, stateDescription);
+            
+            const currentDetailedState = this.accountDetailedStates.get(account);
+            const currentSimplifiedState = this.accountSimplifiedStates.get(account);
+            
+            if (currentDetailedState === newDetailedState && currentSimplifiedState === newSimplifiedState) {
+                await this.sendSignificantStateChangeNotification(account, previousSimplifiedState, newSimplifiedState);
                 this.lastStateNotification.set(account, Date.now());
+            } else {
+                console.log(`  State changed again for ${account} during debounce period, skipping notification`);
             }
             
             this.stateChangeBuffer.delete(account);
         }, this.stateChangeDelay);
         
+        
         this.stateChangeBuffer.set(account, {
-            state: newState,
+            previousSimplifiedState: previousSimplifiedState,
+            newSimplifiedState: newSimplifiedState,
+            newDetailedState: newDetailedState,
             timestamp: now,
             timeoutId: timeoutId
         });
     }
 
-    async sendStateChangeNotification(account, state, stateDescription) {
-        const significantStates = [0, 2];
+    
+    async sendSignificantStateChangeNotification(account, previousState, newState) {
+        console.log(`  Sending notification for ${account}: ${previousState} → ${newState}`);
         
-        if (!significantStates.includes(state)) {
-            console.log(`  Skipping notification for ${account} - non-significant state: ${stateDescription}`);
-            return;
+        let color = 3447003; 
+        let emoji = "🔄";
+        
+        if (newState === 'Online' && previousState === 'Offline') {
+            color = 3066993; 
+            emoji = "🟢";
+        } else if (newState === 'Offline' && previousState === 'Online') {
+            color = 15158332; 
+            emoji = "🔴";
         }
         
-        let color = 3447003;
-        if (state === 2) color = 3066993;
-        if (state === 0) color = 15158332;
-        
         await this.sendDiscordNotification(
-            "🔄 Account State Change",
-            `**${account}** state changed to: **${stateDescription}**`,
+            `${emoji} Account Status Change`,
+            `**${account}**: ${previousState} → ${newState}`,
             color
         );
     }
@@ -552,6 +577,7 @@ class MinecraftAFKBot {
         }
     }
 
+    
     async handleUserProfile(profileData) {
         console.log(`User: ${profileData.discord_display}`);
         console.log(`Plan: ${profileData.plan}`);
@@ -567,6 +593,7 @@ class MinecraftAFKBot {
             currentStates.set(account.username, stateDescription);
             console.log(`  ${index + 1}. ${account.username} - State: ${stateDescription}`);
             
+            
             if (previousState && previousState !== stateDescription) {
                 significantChanges.push({
                     username: account.username,
@@ -576,11 +603,13 @@ class MinecraftAFKBot {
             }
         });
         
+        
         if (significantChanges.length > 0) {
             const now = Date.now();
             const lastProfileNotification = this.lastProfileNotification || 0;
             
-            if ((now - lastProfileNotification) > 60000) {
+            
+            if ((now - lastProfileNotification) > 120000) {
                 let changeDescription = significantChanges.map(change => 
                     `**${change.username}**: ${change.previousState} → ${change.currentState}`
                 ).join('\n');
