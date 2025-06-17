@@ -10,6 +10,8 @@ A Node.js WebSocket bot for monitoring MinecraftAFK.com accounts with Discord no
 - 🔄 Automatic reconnection with exponential backoff
 - 🐳 Docker support for easy deployment
 - ⚙️ Configurable via environment variables
+- 
+![wXPFoZOIpoibZSQl](https://github.com/user-attachments/assets/1d9cb1d0-d27b-4492-b8ee-e7d57d684a41)
 
 ## Quick Start
 
