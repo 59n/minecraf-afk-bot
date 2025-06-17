@@ -34,10 +34,11 @@ class MinecraftAFKBot {
         
         this.accountDetailedStates = new Map(); 
         this.accountSimplifiedStates = new Map(); 
+        this.persistentAccountStates = new Map(); 
         this.stateChangeBuffer = new Map();
-        this.stateChangeDelay = 10000; 
+        this.stateChangeDelay = 10000;
         this.lastStateNotification = new Map();
-        this.minNotificationInterval = 60000; 
+        this.minNotificationInterval = 60000;
         
         
         this.discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
@@ -474,12 +475,12 @@ class MinecraftAFKBot {
         console.log(`  Account: ${account}, New State: ${stateDescription} (${newDetailedState})`);
         
         
-        const previousDetailedState = this.accountDetailedStates.get(account);
-        const previousSimplifiedState = this.accountSimplifiedStates.get(account);
+        const previousSimplifiedState = this.persistentAccountStates.get(account);
         
         
         this.accountDetailedStates.set(account, newDetailedState);
         this.accountSimplifiedStates.set(account, newSimplifiedState);
+        this.persistentAccountStates.set(account, newSimplifiedState);
         
         
         if (previousSimplifiedState === undefined) {
@@ -517,10 +518,9 @@ class MinecraftAFKBot {
         
         const timeoutId = setTimeout(async () => {
             
-            const currentDetailedState = this.accountDetailedStates.get(account);
-            const currentSimplifiedState = this.accountSimplifiedStates.get(account);
+            const currentSimplifiedState = this.persistentAccountStates.get(account);
             
-            if (currentDetailedState === newDetailedState && currentSimplifiedState === newSimplifiedState) {
+            if (currentSimplifiedState === newSimplifiedState) {
                 await this.sendSignificantStateChangeNotification(account, previousSimplifiedState, newSimplifiedState);
                 this.lastStateNotification.set(account, Date.now());
             } else {
@@ -592,6 +592,10 @@ class MinecraftAFKBot {
             
             currentStates.set(account.username, stateDescription);
             console.log(`  ${index + 1}. ${account.username} - State: ${stateDescription}`);
+            
+            
+            const previousPersistentState = this.persistentAccountStates.get(account.username);
+            this.persistentAccountStates.set(account.username, stateDescription);
             
             
             if (previousState && previousState !== stateDescription) {
